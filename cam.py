@@ -208,7 +208,13 @@ def report_health_to_gcs():
         "defect": check_server_health("http://34.64.178.127:8000/health"),
         "classify": check_server_health("http://34.64.178.127:8100/health"),
     }
-    status["overall"] = "ok" if all(v == "ok" for v in status.values()) else "fail"
+    ok_all = (
+        status.get("ir1") == "ok" and
+        status.get("ir2") == "ok" and
+        status.get("defect") == "ok" and
+        status.get("classify") == "ok"
+    )
+    status["overall"] = "ok" if ok_all else "fail"
 
     try:
         blob = _health_bucket.blob(GCS_STATUS_OBJECT)
