@@ -50,7 +50,7 @@ Python OpenCV Serial GoogleCloud FastAPI
 1. 아두이노로부터 `"SNAP2"` 신호 수신
 2. 현미경 카메라로 이미지 촬영
 3. GCS `raw_grade/`에 이미지 업로드
-4. Rule 서버(`/classify`)로 전송
+4. Classify 서버(`/classify`)로 전송
 5. 응답 예시: `{ "label": "A" }` → 아두이노에 `RESULT:A` 전송
 
 ---
@@ -127,8 +127,7 @@ cam.py는 주기적으로 다음 요소를 점검하고 프론트엔드로 결�
 | 일반 카메라       | OpenCV VideoCapture 확인       |
 | 현미경 카메라     | OpenCV VideoCapture 확인       |
 | AI 서버           | URL_SNAP1 응답 확인            |
-| Rule 서버         | URL_SNAP2 응답 확인            |
-| GCS 업로드 가능 여부 | 이미지 업로드 테스트 후 삭제      |
+| classify 서버         | URL_SNAP2 응답 확인            |
 
 ---
 
