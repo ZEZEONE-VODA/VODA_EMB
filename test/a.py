@@ -1,6 +1,6 @@
 import cv2
 
-CAM_IR2 = 0  # Snap2 카메라 인덱스 (보통 0번, 환경에 따라 확인)
+CAM_IR2 = 0 # Snap2 카메라 인덱스 (보통 0번, 환경에 따라 확인)
 WIN_NAME = "Snap2 Live"
 
 def live_snap2_camera(cam_index=CAM_IR2, size=(1280, 720)):
@@ -14,7 +14,7 @@ def live_snap2_camera(cam_index=CAM_IR2, size=(1280, 720)):
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
 
-    print(f"[*] Snap2 실시간 미리보기 시작 (종료: q 또는 ESC)")
+    print(f"[*] Snap1 실시간 미리보기 시작 (종료: q 또는 ESC)")
     while True:
         ret, frame = cap.read()
         if not ret:

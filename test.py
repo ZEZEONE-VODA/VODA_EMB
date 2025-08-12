@@ -1,4 +1,4 @@
-# cam.py — 실캡처 기반 헬스체크 + 카메라 충돌 방지(락)
+import os
 import io
 import cv2
 import json
@@ -11,32 +11,32 @@ from google.cloud import storage
 
 # ─────────────────────────────
 # 기본 설정
-PORT = '/dev/ttyACM0'
-BAUD = 9600
+PORT = '/dev/ttyACM0'               # Arduino와 연결된 시리얼 포트
+BAUD = 9600                         # 시리얼 통신 속도
 
-SNAP1_KEYWORD = "SNAP1"   # 결함 검사 트리거
-SNAP2_KEYWORD = "SNAP2"   # 등급 검사 트리거
+SNAP1_KEYWORD = "SNAP1"             # 결함 검사 트리거 신호
+SNAP2_KEYWORD = "SNAP2"             # 등급 검사 트리거 신호
 
-URL_SNAP1 = 'http://34.64.178.127:8000/defect'
-URL_SNAP2 = 'http://34.64.178.127:8100/classify'
+URL_SNAP1 = 'http://34.64.178.127:8000/defect'     # 결함 판단 AI 서버
+URL_SNAP2 = 'http://34.64.178.127:8100/classify'   # 등급 판단 Rule 서버
 
-GCS_KEY_PATH = "service-account.json"
+GCS_KEY_PATH = "service-account.json"              # GCP 인증 키 (권한 600 권장)
 
-# 이미지 업로드 버킷/폴더
+# 이미지 업로드용 버킷/폴더
 BUCKET_NAME = "zezeone_image"
 GCS_FOLDER_SNAP1 = "raw_defect"
 GCS_FOLDER_SNAP2 = "raw_grade"
 
-# 헬스 JSON 업로드 버킷/폴더
+# 헬스 JSON 업로드용 버킷/폴더
 HEALTH_BUCKET_NAME = "zezeone_health"
 HEALTH_FOLDER = "health_check"
-GCS_STATUS_OBJECT = f"{HEALTH_FOLDER}/status.json"
-HEALTH_INTERVAL = 60  # 초
+GCS_STATUS_OBJECT = f"{HEALTH_FOLDER}/status.json"  # 장비ID 별로 경로 분리 권장
+HEALTH_INTERVAL =  60 
 
 # 카메라
-CAM_IR1 = 2    # 결함용
-CAM_IR2 = 0    # 등급용
-RESOLUTION = (1280, 720)
+CAM_IR1 = 2                         # 일반 카메라 인덱스 (결함 검사용)
+CAM_IR2 = 0                         # 현미경 카메라 인덱스 (등급 검사용)
+RESOLUTION = (1280, 720)            # 카메라 캡처 해상도
 
 # ─────────────────────────────
 # GCS 클라이언트(전역 재사용)
@@ -44,14 +44,8 @@ _gcs_client = storage.Client.from_service_account_json(GCS_KEY_PATH)
 _img_bucket = _gcs_client.bucket(BUCKET_NAME)
 _health_bucket = _gcs_client.bucket(HEALTH_BUCKET_NAME)
 
-# 카메라 충돌 방지용 락 (카메라별 독립)
-_cam_locks = {
-    CAM_IR1: threading.Lock(),
-    CAM_IR2: threading.Lock(),
-}
-CAM_LOCK_TIMEOUT = 3.0  # 초 (캡처 시작 대기 한도)
-
 # ─────────────────────────────
+# 시리얼 포트 열기
 def open_serial():
     while True:
         try:
@@ -64,34 +58,24 @@ def open_serial():
             print("[!] Serial open failed, retrying in 3s:", e)
             time.sleep(3)
 
-# 락을 잡고 안전하게 한 프레임 캡처
-def capture_image_locked(index: int):
-    lock = _cam_locks.get(index)
-    if lock is None:
-        # 정의되지 않은 카메라인 경우도 안전하게 단일 락 사용
-        lock = _cam_locks.setdefault(index, threading.Lock())
+# 카메라로 이미지 캡처 (단발)
+def capture_image(index: int):
+    cap = cv2.VideoCapture(index, cv2.CAP_V4L2)
+    if not cap.isOpened():
+        raise RuntimeError(f"Camera {index} open failed")
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, RESOLUTION[0])
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, RESOLUTION[1])
+    time.sleep(0.7)
+    ok, frame = cap.read()
+    cap.release()
+    return frame if ok else None
 
-    acquired = lock.acquire(timeout=CAM_LOCK_TIMEOUT)
-    if not acquired:
-        raise RuntimeError(f"Camera {index} busy (lock timeout)")
-
-    try:
-        cap = cv2.VideoCapture(index, cv2.CAP_V4L2)
-        if not cap.isOpened():
-            raise RuntimeError(f"Camera {index} open failed")
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, RESOLUTION[0])
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, RESOLUTION[1])
-        time.sleep(0.7)  # 센서 안정화
-        ok, frame = cap.read()
-        cap.release()
-        return frame if ok else None
-    finally:
-        lock.release()
-
+# 이미지 JPEG 인코딩
 def encode_jpeg(frame):
     ok, buf = cv2.imencode('.jpg', frame)
     return buf.tobytes() if ok else None
 
+# GCS 업로드(이미지)
 def upload_to_gcs(image_bytes: bytes, filename: str, folder: str):
     try:
         blob = _img_bucket.blob(f"{folder}/{filename}")
@@ -102,6 +86,7 @@ def upload_to_gcs(image_bytes: bytes, filename: str, folder: str):
         print("[!] GCS upload failed:", e)
         return None
 
+# 이미지 AI 서버로 전송 후 응답 반환
 def post_image_to_server(image_bytes: bytes, url: str, retries: int = 3):
     for i in range(retries):
         try:
@@ -116,11 +101,10 @@ def post_image_to_server(image_bytes: bytes, url: str, retries: int = 3):
         time.sleep(0.5)
     return None
 
-# ─────────────────────────────
-# SNAP 처리
+# SNAP1 처리 (결함 검사)
 def handle_snap1(ser):
     try:
-        frame = capture_image_locked(CAM_IR1)
+        frame = capture_image(CAM_IR1)
         if frame is None:
             raise ValueError("Camera frame is None")
         image_bytes = encode_jpeg(frame)
@@ -130,12 +114,13 @@ def handle_snap1(ser):
         ts = int(time.time())
         filename = f"snap1_{ts}.jpg"
 
+        # 업로드 실패해도 라인은 멈추지 않게 GO
         if not upload_to_gcs(image_bytes, filename, GCS_FOLDER_SNAP1):
             ser.write(b"GO\n")
             return
 
         result = post_image_to_server(image_bytes, URL_SNAP1)
-        label = (result or {}).get("label")
+        label = result.get("label") if result else None
 
         if label == "X":
             ser.write(b"X\n")
@@ -147,9 +132,10 @@ def handle_snap1(ser):
         print("[!] SNAP1 error:", e)
         ser.write(b"GO\n")
 
+# SNAP2 처리 (등급 판별)
 def handle_snap2(ser):
     try:
-        frame = capture_image_locked(CAM_IR2)
+        frame = capture_image(CAM_IR2)
         if frame is None:
             raise ValueError("Camera frame is None")
         image_bytes = encode_jpeg(frame)
@@ -162,7 +148,7 @@ def handle_snap2(ser):
         upload_to_gcs(image_bytes, filename, GCS_FOLDER_SNAP2)
 
         result = post_image_to_server(image_bytes, URL_SNAP2)
-        grade = (result or {}).get("label")
+        grade = result.get("label") if result else None
 
         if grade:
             ser.write(f"RESULT:{grade}\n".encode())
@@ -175,19 +161,17 @@ def handle_snap2(ser):
         ser.write(b"GO\n")
 
 # ─────────────────────────────
-# 헬스체크(실캡처 기반 + GCS 업로드)
-def check_camera(index: int) -> str:
-    try:
-        frame = capture_image_locked(index)
-        return "ok" if frame is not None else "fail"
-    except Exception:
-        return "fail"
+# 헬스체크(초저부하): /dev/video* 존재 + 서버 헬스 HEAD(미지원 시 GET)
+def usb_present(dev_index: int) -> str:
+    path = f"/dev/video{dev_index}"
+    return "ok" if os.path.exists(path) else "fail"
 
 def check_server_health(url: str) -> str:
     try:
         r = requests.head(url, timeout=2)
         if r.status_code == 200:
             return "ok"
+        # 일부 서버는 HEAD 미지원(405 등) → GET로 재시도
         if r.status_code in (400, 404, 405, 500):
             g = requests.get(url, timeout=3)
             return "ok" if g.status_code == 200 else "fail"
@@ -203,16 +187,23 @@ def report_health_to_gcs():
     now = int(time.time())
     status = {
         "ts": now,
-        "ir1": check_camera(CAM_IR1),  # 실캡처 기반
-        "ir2": check_camera(CAM_IR2),  # 실캡처 기반
+        "ir1": usb_present(CAM_IR1),
+        "ir2": usb_present(CAM_IR2),
         "defect": check_server_health("http://34.64.178.127:8000/health"),
         "classify": check_server_health("http://34.64.178.127:8100/health"),
     }
-    status["overall"] = "ok" if all(v == "ok" for v in status.values()) else "fail"
+    ok_all = (
+        status["ir1"] == "ok" and 
+        status["ir2"] == "ok" and
+        status["defect"] == "ok" and
+        status["classify"] == "ok"
+    )
+    status["overall"] = "ok" if ok_all else "fail"
 
     try:
         blob = _health_bucket.blob(GCS_STATUS_OBJECT)
-        blob.cache_control = "no-store, max-age=0"
+        blob.cache_control = "no-store, max-age=0"       # 캐시 방지
+        blob.content_type = "application/json"
         blob.upload_from_string(json.dumps(status), content_type="application/json")
         print(f"[Health] GCS uploaded gs://{HEALTH_BUCKET_NAME}/{GCS_STATUS_OBJECT} | {status}")
     except Exception as e:
@@ -226,8 +217,11 @@ def start_healthcheck_loop():
     threading.Thread(target=loop, daemon=True).start()
 
 # ─────────────────────────────
+# 메인 실행 루프
 def main():
     ser = open_serial()
+
+    # 첫 헬스 업로드 + 주기 실행
     report_health_to_gcs()
     start_healthcheck_loop()
 
