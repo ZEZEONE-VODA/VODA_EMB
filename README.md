@@ -55,6 +55,29 @@ Python | OpenCV | Serial | Google Cloud Storage | Requests
 
 ---
 
+## 🤖 아두이노 제어 로직 (`aduino_final.ino`)
+
+`aduino_final.ino`는 시스템의 물리적 동작을 제어하는 아두이노 스케치입니다. 라즈베리파이(cam.py)와 시리얼 통신을 통해 명령을 주고받으며, 센서 입력에 따라 모터와 서보 모터를 정밀하게 제어합니다.
+
+### ⚙️ 주요 기능 및 구성
+
+-   **IR 센서 입력**: 두 개의 IR 센서(`SENSOR1_PIN`, `SENSOR2_PIN`)를 사용하여 제품의 위치를 감지합니다.
+    -   `SENSOR1_PIN`: 첫 번째 검사 지점(SNAP1)을 트리거하며, `cam.py`에 "SNAP1" 신호를 보냅니다.
+    -   `SENSOR2_PIN`: 두 번째 검사 지점(SNAP2)을 트리거하며, `cam.py`에 "SNAP2" 신호를 보냅니다.
+-   **DC 모터 제어**: 컨베이어 벨트의 구동을 담당하는 DC 모터의 속도와 방향을 제어합니다.
+-   **서보 모터 제어**: 제품의 등급(A, B) 또는 불량(X) 판정 결과에 따라 제품을 분류하는 서보 모터를 제어합니다.
+    -   `SERVO_ANGLE_A`, `SERVO_ANGLE_B`, `SERVO_ANGLE_X` 등의 각도 설정으로 정밀한 분류가 가능합니다.
+-   **시리얼 통신**: `cam.py`로부터 `start`, `stop`, `GO`, `X`, `RESULT:A`, `RESULT:B` 등의 명령을 수신하고, 센서 감지 시 `SNAP1`, `SNAP2` 신호를 전송합니다.
+-   **자동/수동 모드**: `start`/`stop` 명령을 통해 자동 제어 모드를 전환할 수 있습니다.
+-   **강제 주행 윈도우**: 서버 응답 수신 후 일정 시간 동안 센서 입력을 무시하고 모터를 강제 주행시켜 다음 제품 처리를 원활하게 합니다.
+-   **IR2 스킵 로직**: `SENSOR1_PIN`에서 불량(`X`)이 감지된 경우, 다음 `SENSOR2_PIN` 트리거를 건너뛰어 불필요한 검사를 방지합니다.
+
+### 🤝 `cam.py`와의 상호작용
+
+아두이노는 `cam.py`의 지시에 따라 제품의 이동을 제어하고, `cam.py`는 아두이노로부터 센서 신호를 받아 이미지 촬영 및 AI 서버 통신을 수행합니다. 이 두 스크립트의 유기적인 연동을 통해 자동 품질 검사 시스템이 동작합니다.
+
+---
+
 ## ⚙️ 설정 및 구성
 
 ```python
@@ -147,8 +170,9 @@ python cam.py
 ```
 raspi/
 ├── cam.py
-├── service-account.json
-└── README.md
+├── README.md
+└── aduino_final/
+    └── aduino_final.ino
 ```
 
 ---
