@@ -1,4 +1,4 @@
-# VODA_EMB — cam.py 자동 품질 검사 컨트롤러 (v2)
+# VODA_EMB — cam.py 자동 품질 검사 컨트롤러
 
 [![Python](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://www.python.org/)
 [![OpenCV](https://img.shields.io/badge/OpenCV-4.x-green.svg)](https://opencv.org/)
@@ -113,14 +113,14 @@ sudo systemctl start voda-emb
 
 ## 📡 헬스체크
 
-주기적으로 다음 항목을 점검하고 GCS에 JSON 업로드합니다.
+주기적으로 다음 항목을 점검하고 GCS에 JSON파일을 업로드합니다.
 
 | 항목 | 체크 방식 | 상태 |
 | --- | --- | --- |
 | 결함 카메라 | 이미지 캡처 시도 | `ok` / `fail` |
 | 등급 카메라 | 이미지 캡처 시도 | `ok` / `fail` |
 | AI 서버 | `/health` 호출 | `ok` / `fail` |
-| Rule 서버 | `/health` 호출 | `ok` / `fail` |
+| Classify 서버 | `/health` 호출 | `ok` / `fail` |
 | 종합 상태 | 전체가 `ok`일 경우 | `ok` / `fail` |
 
 ---
