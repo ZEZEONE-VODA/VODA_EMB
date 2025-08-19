@@ -12,14 +12,14 @@
 
 **VODA_EMB**는 아두이노와 라즈베리파이를 기반으로 한 **스마트 팩토리 임베디드 컨트롤러**입니다.  
 `cam.py`를 통해 **SNAP1(결함 검사)** / **SNAP2(등급 판정)** 프로세스를 제어하고,  
-AI/Rule 서버와 통신하며 Google Cloud Storage(GCS) 업로드 및 **헬스체크**를 수행합니다.  
+Defect/Classify 서버와 통신하며 Google Cloud Storage(GCS) 업로드 및 **헬스체크**를 수행합니다.  
 
 ---
 
 ## ✨ 주요 기능
 
-- **SNAP1 결함 검사**: 일반 카메라(CAM_IR1) 촬영 → AI 서버 `/defect` 전송 → 결과(`GO`/`X`)를 아두이노에 전달
-- **SNAP2 등급 판정**: 현미경 카메라(CAM_IR2) 촬영 → Rule 서버 `/classify` 전송 → 결과(`RESULT:A/B`)를 아두이노에 전달
+- **SNAP1 결함 검사**: 일반 카메라(CAM_IR1) 촬영 → Defect 서버 `/defect` 전송 → 결과(`GO`/`X`)를 아두이노에 전달
+- **SNAP2 등급 판정**: 현미경 카메라(CAM_IR2) 촬영 → Classify 서버 `/classify` 전송 → 결과(`RESULT:A/B`)를 아두이노에 전달
 - **GCS 연동**: SNAP1 이미지는 `raw_defect/`, SNAP2 이미지는 `raw_grade/` 업로드
 - **헬스체크**: 카메라/서버 상태 점검 후 `health_check/status.json` 업로드
 - **안정성**: `threading.Lock` 기반 카메라 락으로 동시 접근 충돌 방지
@@ -32,7 +32,7 @@ AI/Rule 서버와 통신하며 Google Cloud Storage(GCS) 업로드 및 **헬스�
 1. 아두이노에서 `"SNAP1"` 신호 수신  
 2. CAM_IR1 촬영 (락 확보)  
 3. GCS `raw_defect/` 업로드  
-4. AI 서버 `/defect` 전송  
+4. Defect 서버 `/defect` 전송  
 5. 결과 처리  
    - `{"label": "X"}` → 아두이노에 `X` 전송  
    - 정상 → 아두이노에 `GO` 전송  
@@ -41,7 +41,7 @@ AI/Rule 서버와 통신하며 Google Cloud Storage(GCS) 업로드 및 **헬스�
 1. 아두이노에서 `"SNAP2"` 신호 수신  
 2. CAM_IR2 촬영 (락 확보)  
 3. GCS `raw_grade/` 업로드  
-4. Rule 서버 `/classify` 전송  
+4. Classify 서버 `/classify` 전송  
 5. 응답 `{"label": "A"}` → 아두이노에 `RESULT:A` 전송  
 
 ---
@@ -65,8 +65,8 @@ AI/Rule 서버와 통신하며 Google Cloud Storage(GCS) 업로드 및 **헬스�
 PORT=/dev/ttyACM0
 BAUD=9600
 
-URL_SNAP1=http://<AI_SERVER>:8000/defect
-URL_SNAP2=http://<RULE_SERVER>:8100/classify
+URL_SNAP1=http://<Defect_SERVER>:8000/defect
+URL_SNAP2=http://<Classify_SERVER>:8100/classify
 
 GCS_KEY_PATH=service-account.json
 BUCKET_NAME=zezeone_image
@@ -119,7 +119,7 @@ sudo systemctl start voda-emb
 | --- | --- | --- |
 | 결함 카메라 | 이미지 캡처 시도 | `ok` / `fail` |
 | 등급 카메라 | 이미지 캡처 시도 | `ok` / `fail` |
-| AI 서버 | `/health` 호출 | `ok` / `fail` |
+| Defect 서버 | `/health` 호출 | `ok` / `fail` |
 | Classify 서버 | `/health` 호출 | `ok` / `fail` |
 | 종합 상태 | 전체가 `ok`일 경우 | `ok` / `fail` |
 
