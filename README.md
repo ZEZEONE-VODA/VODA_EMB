@@ -79,38 +79,6 @@ RESOLUTION=1280x720
 
 ---
 
-## 🚀 실행 방법
-
-### 개발 모드
-```bash
-pip install -r requirements.txt
-python cam.py
-```
-
-### 운영 모드 (systemd 예시)
-```bash
-# /etc/systemd/system/voda-emb.service
-[Unit]
-Description=VODA_EMB cam.py Controller
-After=network.target
-
-[Service]
-ExecStart=/usr/bin/python3 /home/pi/raspi/cam.py
-WorkingDirectory=/home/pi/raspi
-Restart=always
-User=pi
-
-[Install]
-WantedBy=multi-user.target
-```
-
-```bash
-sudo systemctl enable voda-emb
-sudo systemctl start voda-emb
-```
-
----
-
 ## 📡 헬스체크
 
 주기적으로 다음 항목을 점검하고 GCS에 JSON파일을 업로드합니다.
